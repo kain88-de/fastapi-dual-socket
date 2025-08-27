@@ -61,7 +61,7 @@ def main():
     print("\n2. Testing Admin API (Unix Socket)")
     print("-" * 35)
     
-    socket_path = "/tmp/fastapi-admin.sock"
+    socket_path = "/tmp/fastapi-local.sock"
     if not Path(socket_path).exists():
         print(f"   ❌ Admin socket not found: {socket_path}")
         return 1

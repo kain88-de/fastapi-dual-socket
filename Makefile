@@ -8,11 +8,11 @@ help: ## Show this help message
 install: ## Install dependencies with uv
 	uv sync
 
-dev: ## Run the dual server (TCP + Unix socket)
-	uv run python main.py
+dev: ## Run the development server (TCP + Unix socket)
+	uv run server
 
 clean: ## Clean up socket files and cache
-	rm -f /tmp/fastapi-local.sock /tmp/fastapi-admin.sock
+	rm -f /tmp/fastapi-local.sock /tmp/fastapi-dual-socket-admin-*.sock
 	rm -f /tmp/gunicorn.pid /tmp/admin-service.pid
 	rm -f /tmp/fastapi-dual-socket.db
 	rm -rf __pycache__ src/__pycache__ .pytest_cache
@@ -86,8 +86,7 @@ check-deps: ## Check if required tools are available
 
 # Production commands
 prod: ## Start production server with Gunicorn
-	@echo "🚀 Starting production server..."
-	./start-production.sh
+	uv run server --prod
 
 prod-stop: ## Stop production server
 	@echo "⏹️  Stopping production servers..."
@@ -99,19 +98,15 @@ prod-stop: ## Stop production server
 	fi
 	$(MAKE) clean
 
-admin-service: ## Run only the admin service (Unix socket)
-	@echo "🔒 Starting admin service only..."
-	uv run python -m src.admin_service
 
-test-prod-clean: ## Clean production test with proper process management
+test-prod: ## Test production deployment
 	@echo "🧪 Production Test"
 	@echo "=================="
 	@pkill -f "gunicorn.*src.production" 2>/dev/null || true
-	@pkill -f "python.*admin_service" 2>/dev/null || true
-	@rm -f /tmp/fastapi-admin.sock /tmp/fastapi-dual-socket.db /tmp/admin-service.pid /tmp/gunicorn.pid
-	@sleep 3
+	@rm -f /tmp/fastapi-dual-socket-admin-*.sock /tmp/fastapi-dual-socket.db
+	@sleep 2
 	@echo "Starting production server..."
-	@timeout 30 ./start-production.sh > /tmp/prod-test.log 2>&1 &
+	@timeout 30 uv run server --prod > /tmp/prod-test.log 2>&1 &
 	@echo $$! > prod-test.pid
 	@sleep 6  # Wait for startup
 	@echo "Running tests..."
@@ -123,12 +118,7 @@ test-prod-clean: ## Clean production test with proper process management
 		kill -KILL `cat prod-test.pid` 2>/dev/null || true; \
 		rm -f prod-test.pid; \
 	fi
-	@if [ -f /tmp/admin-service.pid ]; then \
-		kill -TERM `cat /tmp/admin-service.pid` 2>/dev/null || true; \
-		rm -f /tmp/admin-service.pid; \
-	fi
 	@pkill -f "gunicorn.*src.production" 2>/dev/null || true
-	@pkill -f "python.*admin_service" 2>/dev/null || true
-	@sleep 2
+	@sleep 1
 	$(MAKE) clean
 	@echo "✅ Test completed and cleaned up"
