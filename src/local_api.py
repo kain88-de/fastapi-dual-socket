@@ -1,6 +1,6 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from .shared import store
+from .database import store
 
 # Local API - only accessible via Unix socket
 app = FastAPI(title="Local Admin API", description="Local-only administrative endpoints")
@@ -27,13 +27,17 @@ def get_all_data():
 @app.post("/admin/data")
 def set_admin_data(item: AdminDataItem):
     """Set any data including sensitive keys (admin only)"""
-    store.set_data(item.key, item.value)
+    success = store.set_data(item.key, item.value)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to store data")
     return {"message": f"Admin set {item.key} = {item.value}"}
 
 @app.delete("/admin/data/reset")
 def reset_all_data():
     """Reset all data (admin only - dangerous!)"""
-    store.reset_data()
+    success = store.reset_data()
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to reset data")
     return {"message": "All data reset"}
 
 @app.get("/admin/status")

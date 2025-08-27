@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from .shared import store
+from .database import store
 
 # Public API - exposed to the world
 app = FastAPI(title="Public API", description="World-accessible endpoints")
@@ -29,7 +29,9 @@ def set_public_data(item: DataItem):
     if item.key.startswith('_'):
         raise HTTPException(status_code=403, detail="Cannot set private keys via public API")
     
-    store.set_data(item.key, item.value)
+    success = store.set_data(item.key, item.value)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to store data")
     return {"message": f"Set {item.key} = {item.value}"}
 
 @app.get("/health")

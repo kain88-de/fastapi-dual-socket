@@ -1,4 +1,4 @@
-.PHONY: help dev test test-public test-local clean install
+.PHONY: help dev test test-public test-local clean install prod prod-test prod-stop admin-service
 
 help: ## Show this help message
 	@echo "FastAPI Dual Socket Demo"
@@ -12,7 +12,9 @@ dev: ## Run the dual server (TCP + Unix socket)
 	uv run python main.py
 
 clean: ## Clean up socket files and cache
-	rm -f /tmp/fastapi-local.sock
+	rm -f /tmp/fastapi-local.sock /tmp/fastapi-admin.sock
+	rm -f /tmp/gunicorn.pid /tmp/admin-service.pid
+	rm -f /tmp/fastapi-dual-socket.db
 	rm -rf __pycache__ src/__pycache__ .pytest_cache
 	find . -name "*.pyc" -delete
 
@@ -81,3 +83,52 @@ check-deps: ## Check if required tools are available
 	@command -v jq >/dev/null 2>&1 || echo "⚠️  jq not found - JSON output will be raw"
 	@command -v uv >/dev/null 2>&1 || echo "❌ uv not found - required for running"
 	@echo "✅ Dependency check complete"
+
+# Production commands
+prod: ## Start production server with Gunicorn
+	@echo "🚀 Starting production server..."
+	./start-production.sh
+
+prod-stop: ## Stop production server
+	@echo "⏹️  Stopping production servers..."
+	@pkill -f "gunicorn.*src.production" 2>/dev/null || true
+	@pkill -f "python.*admin_service" 2>/dev/null || true
+	@if [ -f /tmp/admin-service.pid ]; then \
+		kill -TERM `cat /tmp/admin-service.pid` 2>/dev/null || true; \
+		rm -f /tmp/admin-service.pid; \
+	fi
+	$(MAKE) clean
+
+admin-service: ## Run only the admin service (Unix socket)
+	@echo "🔒 Starting admin service only..."
+	uv run python -m src.admin_service
+
+test-prod-clean: ## Clean production test with proper process management
+	@echo "🧪 Production Test"
+	@echo "=================="
+	@pkill -f "gunicorn.*src.production" 2>/dev/null || true
+	@pkill -f "python.*admin_service" 2>/dev/null || true
+	@rm -f /tmp/fastapi-admin.sock /tmp/fastapi-dual-socket.db /tmp/admin-service.pid /tmp/gunicorn.pid
+	@sleep 3
+	@echo "Starting production server..."
+	@timeout 30 ./start-production.sh > /tmp/prod-test.log 2>&1 &
+	@echo $$! > prod-test.pid
+	@sleep 6  # Wait for startup
+	@echo "Running tests..."
+	@uv run python test-production.py || echo "Tests completed (some may have failed)"
+	@echo "Stopping servers..."
+	@if [ -f prod-test.pid ]; then \
+		kill -TERM `cat prod-test.pid` 2>/dev/null || true; \
+		sleep 2; \
+		kill -KILL `cat prod-test.pid` 2>/dev/null || true; \
+		rm -f prod-test.pid; \
+	fi
+	@if [ -f /tmp/admin-service.pid ]; then \
+		kill -TERM `cat /tmp/admin-service.pid` 2>/dev/null || true; \
+		rm -f /tmp/admin-service.pid; \
+	fi
+	@pkill -f "gunicorn.*src.production" 2>/dev/null || true
+	@pkill -f "python.*admin_service" 2>/dev/null || true
+	@sleep 2
+	$(MAKE) clean
+	@echo "✅ Test completed and cleaned up"
